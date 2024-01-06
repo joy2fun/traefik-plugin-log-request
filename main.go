@@ -1,0 +1,118 @@
+package traefik_plugin_log_request
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"os"
+)
+
+// Config holds the plugin configuration.
+type Config struct {
+	ResponseBody bool `json:"responseBody,omitempty"`
+}
+
+// CreateConfig creates and initializes the plugin configuration.
+func CreateConfig() *Config {
+	return &Config{}
+}
+
+type logRequest struct {
+	name         string
+	next         http.Handler
+	responseBody bool
+}
+
+type RequestData struct {
+	URL          string `json:"url"`
+	Host         string `json:"host"`
+	Body         string `json:"body"`
+	Headers      string `json:"headers"`
+	ResponseBody string `json:"response_body"`
+}
+
+func New(_ context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
+	return &logRequest{
+		name:         name,
+		next:         next,
+		responseBody: config.ResponseBody,
+	}, nil
+}
+
+func (p *logRequest) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+	}
+
+	req.Body = io.NopCloser(bytes.NewBuffer(body))
+
+	wrappedWriter := &responseWriter{
+		ResponseWriter: rw,
+	}
+
+	p.next.ServeHTTP(wrappedWriter, req)
+
+	bodyBytes := wrappedWriter.buffer.Bytes()
+	rw.Write(bodyBytes)
+
+	headers := make(map[string]string)
+	for name, values := range req.Header {
+		headers[name] = values[0] // Take the first value of the header
+	}
+
+	jsonHeader, err := json.Marshal(headers)
+	if err != nil {
+	}
+
+	requestData := RequestData{
+		URL:     req.URL.String(),
+		Host:    req.Host,
+		Body:    string(body),
+		Headers: string(jsonHeader),
+	}
+
+	if p.responseBody {
+		responseBody := io.NopCloser(bytes.NewBuffer(bodyBytes))
+		responseBodyBytes, err := io.ReadAll(responseBody)
+		if err != nil {
+		}
+
+		requestData.ResponseBody = string(responseBodyBytes)
+	}
+
+	jsonData, err := json.Marshal(requestData)
+	if err != nil {
+	}
+
+	os.Stdout.WriteString(string(jsonData) + "\n")
+}
+
+type responseWriter struct {
+	buffer bytes.Buffer
+
+	http.ResponseWriter
+}
+
+func (r *responseWriter) Write(p []byte) (int, error) {
+	return r.buffer.Write(p)
+}
+
+func (r *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := r.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, fmt.Errorf("%T is not a http.Hijacker", r.ResponseWriter)
+	}
+
+	return hijacker.Hijack()
+}
+
+func (r *responseWriter) Flush() {
+	if flusher, ok := r.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
