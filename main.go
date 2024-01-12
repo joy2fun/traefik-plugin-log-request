@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,7 +16,8 @@ import (
 
 // Config holds the plugin configuration.
 type Config struct {
-	ResponseBody bool `json:"responseBody,omitempty"`
+	ResponseBody        bool   `json:"responseBody,omitempty"`
+	RequestIDHeaderName string `json:"requestIDHeaderName,omitempty"`
 }
 
 // CreateConfig creates and initializes the plugin configuration.
@@ -23,9 +26,10 @@ func CreateConfig() *Config {
 }
 
 type logRequest struct {
-	name         string
-	next         http.Handler
-	responseBody bool
+	name                string
+	next                http.Handler
+	responseBody        bool
+	requestIDHeaderName string
 }
 
 type RequestData struct {
@@ -34,17 +38,31 @@ type RequestData struct {
 	Body         string `json:"body"`
 	Headers      string `json:"headers"`
 	ResponseBody string `json:"response_body"`
+	RequestID    string `json:"request_id"`
 }
 
 func New(_ context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
+	if config.RequestIDHeaderName == "" {
+		config.RequestIDHeaderName = "X-Request-Id"
+	}
+
 	return &logRequest{
-		name:         name,
-		next:         next,
-		responseBody: config.ResponseBody,
+		name:                name,
+		next:                next,
+		responseBody:        config.ResponseBody,
+		requestIDHeaderName: config.RequestIDHeaderName,
 	}, nil
 }
 
 func (p *logRequest) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	requestId, _ := generateRandomID(16)
+
+	if req.Header.Get(p.requestIDHeaderName) != "" {
+		requestId = req.Header.Get(p.requestIDHeaderName)
+	}
+
+	req.Header.Set(p.requestIDHeaderName, requestId)
+
 	body, err := io.ReadAll(req.Body)
 	if err != nil {
 	}
@@ -70,10 +88,11 @@ func (p *logRequest) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	requestData := RequestData{
-		URL:     req.URL.String(),
-		Host:    req.Host,
-		Body:    string(body),
-		Headers: string(jsonHeader),
+		URL:       req.URL.String(),
+		Host:      req.Host,
+		Body:      string(body),
+		Headers:   string(jsonHeader),
+		RequestID: requestId,
 	}
 
 	if p.responseBody {
@@ -115,4 +134,12 @@ func (r *responseWriter) Flush() {
 	if flusher, ok := r.ResponseWriter.(http.Flusher); ok {
 		flusher.Flush()
 	}
+}
+
+func generateRandomID(length int) (string, error) {
+	bytes := make([]byte, length)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(bytes), nil
 }

@@ -8,7 +8,8 @@ http:
     my-plugin:
       plugin:
         log-request:
-          responseBody: true # also including response body
+          ResponseBody: false # also including response body
+          RequestIDHeaderName: X-Request-Id
 ```
 
 crd example:
@@ -21,10 +22,11 @@ metadata:
 spec:
   plugin:
     log-request:
-      responseBody: true
+      ResponseBody: false
+      RequestIDHeaderName: X-Request-Id
 ```
 
-helm chart values example:
+helm chart values example (local plugin mode):
 
 ```yaml
 additionalArguments:

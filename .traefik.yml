@@ -3,4 +3,5 @@ summary: Send request info to stdout.
 type: middleware
 import: github.com/joy2fun/traefik-plugin-log-request
 testData:
-  responseBody: true
+  ResponseBody: false
+  RequestIDHeaderName: X-Request-Id
