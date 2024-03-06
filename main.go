@@ -17,6 +17,7 @@ import (
 // Config holds the plugin configuration.
 type Config struct {
 	ResponseBody        bool   `json:"responseBody,omitempty"`
+	MaxLineSize         int    `json:"maxLineSize,omitempty"`
 	RequestIDHeaderName string `json:"requestIDHeaderName,omitempty"`
 }
 
@@ -30,6 +31,7 @@ type logRequest struct {
 	next                http.Handler
 	responseBody        bool
 	requestIDHeaderName string
+	maxLineSize         int
 }
 
 type RequestData struct {
@@ -51,6 +53,7 @@ func New(_ context.Context, next http.Handler, config *Config, name string) (htt
 		next:                next,
 		responseBody:        config.ResponseBody,
 		requestIDHeaderName: config.RequestIDHeaderName,
+		maxLineSize:         config.MaxLineSize,
 	}, nil
 }
 
@@ -99,9 +102,12 @@ func (p *logRequest) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		responseBody := io.NopCloser(bytes.NewBuffer(bodyBytes))
 		responseBodyBytes, err := io.ReadAll(responseBody)
 		if err != nil {
+			// ignore
 		}
 
-		requestData.ResponseBody = string(responseBodyBytes)
+		if len(responseBodyBytes) < p.maxLineSize {
+			requestData.ResponseBody = string(responseBodyBytes)
+		}
 	}
 
 	jsonData, err := json.Marshal(requestData)

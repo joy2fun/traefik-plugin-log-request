@@ -10,6 +10,7 @@ http:
         log-request:
           ResponseBody: false # also including response body
           RequestIDHeaderName: X-Request-Id
+          MaxLineSize: 16384
 ```
 
 crd example:
@@ -24,20 +25,39 @@ spec:
     log-request:
       ResponseBody: false
       RequestIDHeaderName: X-Request-Id
+      MaxLineSize: 16384
 ```
 
-helm chart values example (local plugin mode):
+configMap via helm chart
+
+```yml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: traefik-plugin-log-request
+data:
+{{ (.Files.Glob "plugin-log-request/*").AsConfig | indent 2 }}
+```
+
+traefik helm chart values example (local plugin mode):
 
 ```yaml
 additionalArguments:
   - >-
     --experimental.localplugins.log-request.modulename=github.com/joy2fun/traefik-plugin-log-request
 additionalVolumeMounts:
-  - mountPath: /plugins-local
+  - mountPath: /plugins-local/src/github.com/joy2fun/traefik-plugin-log-request
     name: plugins
 deployment:
   additionalVolumes:
-    - hostPath:
-        path: /data/plugins-local
+    - configMap:
+        name: traefik-plugin-log-request
+        items: 
+          - key: dot.traefik.yml
+            path: .traefik.yml
+          - key: go.mod
+            path: go.mod
+          - key: main.go
+            path: main.go
       name: plugins
 ```

@@ -5,3 +5,4 @@ import: github.com/joy2fun/traefik-plugin-log-request
 testData:
   ResponseBody: false
   RequestIDHeaderName: X-Request-Id
+  MaxLineSize: 16384
